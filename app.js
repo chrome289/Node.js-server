@@ -65,7 +65,7 @@ io.sockets.on('connection', function (socket)
 	        clientInfo.clientId = socket.id;
 	        clients.push(clientInfo);
 	        console.log("User "+data+' Connected')
-	        io.sockets.emit('messaged', 'User '+data+' Connected');
+	        io.sockets.emit('message', 'User '+data+' Connected');
     	}
     });
 
@@ -87,18 +87,51 @@ io.sockets.on('connection', function (socket)
         }
     });
 
-    socket.on('takethis', function(data,username)
+    socket.on('takethis', function(data,username,sendto)
     {
-		for( var i=0, len=clients.length; i<len; ++i )
+    	var isonline=0;
+    	console.log(username);
+    	var queryString = "select * from friends where friend1 = \""+username+"\" and friend2 = \""+sendto+"\"";
+		 
+		connection.query( queryString, function(err, rows,fields){
+		if(err)	
 		{
-            var c = clients[i];
-            if(c.customId == username)
-            {
-                io.sockets.to(c.clientId).emit('messaged', 'User '+username+' says '+data);
-                console.log("Sending "+c.clientId+" a message");
-            }
-        }
-		
+			console.log("Some Error");
+		}
+		else
+		{
+			if(rows[0].pending==null)
+			{
+				for( var i=0, len=clients.length; i<len; ++i )
+				{
+		            var c = clients[i];
+		            if(c.customId == sendto)
+		            {
+		                io.sockets.to(c.clientId).emit('messaged', username+'  :  '+data);
+		                socket.emit('sent', data);
+		                console.log("Sending "+c.clientId+" a message");
+		                isonline=1;
+		            }
+		        }
+		        if(isonline==0)
+		        {
+		        	var queryString2 = "update friends set pending =\""+data+"\" where friend1 = \""+username+"\" and friend2 = \""+sendto+"\"";
+		 			socket.emit('sent', data);
+					connection.query( queryString2, function(err, rows,fields)
+					{
+					if(err)	
+					{
+						console.log("User doesn't exist");
+					}
+				});
+		        }
+			}
+			else
+			{
+				socket.emit('notsent', '');
+			}
+		}
+		});
         console.log('taken '+data);
         //socket.emit('message', 'Recieved '+data);
     });
@@ -143,3 +176,4 @@ io.sockets.on('connection', function (socket)
 		  });
     });
 });
+//UPDATE `chat`.`friends` SET `pending`=NULL WHERE `serial`='1';
