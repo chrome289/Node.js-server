@@ -91,47 +91,17 @@ io.sockets.on('connection', function (socket)
     {
     	var isonline=0;
     	console.log(username);
-    	var queryString = "select * from friends where friend1 = \""+username+"\" and friend2 = \""+sendto+"\"";
+    	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",0)";
 		 
 		connection.query( queryString, function(err, rows,fields){
-		if(err)	
-		{
-			console.log("Some Error");
-		}
-		else
-		{
-			if(rows[0].pending==null)
-			{
-				for( var i=0, len=clients.length; i<len; ++i )
-				{
-		            var c = clients[i];
-		            if(c.customId == sendto)
-		            {
-		                io.sockets.to(c.clientId).emit('messaged', username+'  :  '+data);
-		                socket.emit('sent', data);
-		                console.log("Sending "+c.clientId+" a message");
-		                isonline=1;
-		            }
-		        }
-		        if(isonline==0)
-		        {
-		        	var queryString2 = "update friends set pending =\""+data+"\" where friend1 = \""+username+"\" and friend2 = \""+sendto+"\"";
-		 			socket.emit('sent', data);
-					connection.query( queryString2, function(err, rows,fields)
-					{
-					if(err)	
-					{
-						console.log("User doesn't exist");
-					}
-				});
-		        }
-			}
-			else
-			{
-				socket.emit('notsent', '');
-			}
-		}
-		});
+		  	if(err)	
+		  	{
+		  		console.log("User doesn't exist");
+		  	}else
+		  	{
+		  		socket.emit('sent',data)
+		  	}
+		  });
         console.log('taken '+data);
         //socket.emit('message', 'Recieved '+data);
     });
@@ -175,5 +145,34 @@ io.sockets.on('connection', function (socket)
 		  	}
 		  });
     });
+    socket.on('refresh', function(username,sendto)
+    {
+    	var queryString = "select message from chat where friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 0";
+		 console.log("unrecieved messages ");
+		connection.query( queryString, function(err, rows,fields){
+		  	if(err)	
+		  	{
+		  		console.log("You have no friends");
+		  	}
+		  	else
+		  	{
+		  		console.log(rows);
+				for(var i in rows)
+					socket.emit('messaged',sendto+'  :  '+rows[i].message)
+				var queryString = "update chat set delivered = 1 where friend1 = \""+sendto+"\" and friend2 = \""+username+"\"";
+				console.log("recieved");
+				connection.query( queryString, function(err, rows,fields){
+				  	if(err)	
+				  	{
+				  		console.log("You have no friends");
+				  	}
+				  	else
+				  	{
+				  	}
+				  });
+				socket.emit('done','');
+			}
+		  });
+    });
+
 });
-//UPDATE `chat`.`friends` SET `pending`=NULL WHERE `serial`='1';
