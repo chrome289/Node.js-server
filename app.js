@@ -45,7 +45,7 @@ var io = require('socket.io').listen(server);
 var clients =[];      
 io.sockets.on('connection', function (socket) 
 {
-	socket.on('storeinfo', function (data) 
+	socket.on('storeinfo', function (username,password) 
 	{
 		console.log("User "+socket.id+' Connected')
 		var already_exists=0
@@ -61,12 +61,38 @@ io.sockets.on('connection', function (socket)
         if(already_exists==0)
         {
         	var clientInfo = new Object();
-	        clientInfo.customId = data;
+	        clientInfo.customId = username;
 	        clientInfo.clientId = socket.id;
 	        clients.push(clientInfo);
-	        console.log("User "+data+' Connected')
-	        io.sockets.emit('message', 'User '+data+' Connected');
+	        console.log("User "+username+' Connected')
+	        io.sockets.emit('message', 'User '+username+' Connected');
     	}
+    	var queryString = "select username from user where username = \""+username+"\"";
+		 
+		connection.query( queryString, function(err, rows,fields){
+		  	if(err)	
+		  	{
+		  		console.log("User doesn't exist");
+		  	}
+		  	else
+		  	{
+		  		for(var i in rows)
+		  			i=1
+		  		if(i!=1)
+		  		{
+		  			var queryString = "insert into user values(null,\""+username+"\",\"google+\")";
+					connection.query( queryString, function(err, rows,fields){
+				  	if(err)	
+				  	{
+				  		console.log("User doesn't exist");
+				  	}else
+				  	{
+
+				  	}
+				  	});
+				}
+		  	}
+		});
     });
 
 	//io.sockets.emit('message', '');
@@ -170,6 +196,29 @@ io.sockets.on('connection', function (socket)
 				  	{
 				  	}
 				  });
+				socket.emit('done','');
+			}
+		  });
+    });
+	socket.on('restorehistory', function(username,sendto)
+    {
+    	var queryString = "select friend1,friend2,message from chat where (friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 1 ) or (friend1 = \""+username+"\" and friend2 = \""+sendto+"\")";
+		 console.log("recieved messages ");
+		connection.query( queryString, function(err, rows,fields){
+		  	if(err)	
+		  	{
+		  		console.log("You have no friends");
+		  	}
+		  	else
+		  	{
+		  		console.log(rows);
+				for(var i in rows)
+				{
+					if(rows[i].friend1==sendto)
+						socket.emit('messaged',sendto+'  :  '+rows[i].message)
+					if(rows[i].friend1==username)
+						socket.emit('sent',rows[i].message)
+				}
 				socket.emit('done','');
 			}
 		  });
