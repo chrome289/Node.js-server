@@ -2,7 +2,10 @@ var express = require('express')
 var url = require("url");
 var app = express()
 var mysql = require('mysql');
- 
+var fs = require('fs');
+var request = require('request');
+var async =require('async');
+
 var connection = mysql.createConnection(
     {
       host     : 'localhost',
@@ -45,8 +48,18 @@ var io = require('socket.io').listen(server);
 var clients =[];      
 io.sockets.on('connection', function (socket) 
 {
-	socket.on('storeinfo', function (username,password) 
+	var download = function(uri, filename, callback){
+		  request.head(uri, function(err, res, body){
+		    console.log('content-type:', res.headers['content-type']);
+		    console.log('content-length:', res.headers['content-length']);
+
+		    request(uri).pipe(fs.createWriteStream(filename)).on('close', callback);
+		  });
+		};
+
+	socket.on('storeinfo', function (username,password,image,thumb) 
 	{
+
 		console.log("User "+socket.id+' Connected')
 		var already_exists=0
 		for( var i=0, len=clients.length; i<len; ++i )
@@ -78,7 +91,13 @@ io.sockets.on('connection', function (socket)
 			  			i=1;
 			  		if(i!=1)
 			  		{
-			  			var queryString2 = "insert into user values(null,\""+username+"\",\"google+\")";
+			  			download(image, 'd:/nodejs/profilepic/'+username+'.png', function(){
+    					console.log('Done downloading..');
+  						});
+  						download(thumb, 'd:/nodejs/profilethumb/'+username+'.png', function(){
+    					console.log('Done downloading..');
+  						});
+			  			var queryString2 = "insert into user values(null, \""+username+"\" , \"google+\" , \"d:/nodejs/profilepic/"+username+".png\", \"d:/nodejs/profilethumb/"+username+".png\")";
 						connection.query( queryString2, function(err, rows,fields){
 					  	if(err)	
 					  	{console.log("User doesn't exist");}
@@ -107,7 +126,7 @@ io.sockets.on('connection', function (socket)
             if(c.clientId == socket.id)
             {
                 console.log('User '+c.customId+' Disonnected');
-        		io.sockets.emit('messaged', 'User '+c.customId+' Disonnected');
+        		//sockets.emit('messaged', 'User '+c.customId+' Disonnected');
         		clients.splice(i,1);
                 break;
             }
@@ -116,7 +135,7 @@ io.sockets.on('connection', function (socket)
 
     socket.on('takethis', function(data,username,sendto)
     {
-    	var isonline=0;
+    	var isonline=0,on_id;
     	console.log(username);
     	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",0)";
 		 
@@ -126,6 +145,25 @@ io.sockets.on('connection', function (socket)
 		    else
 		  	{socket.emit('sent',data)}
 		  });
+		for( var i=0, len=clients.length; i<len; ++i )
+		{
+            var c = clients[i];
+            if(c.customId == sendto)
+            {
+                isonline=1;id=c.clientId;
+                break;
+            }
+        }
+        if(isonline==1)
+        {
+        	io.to(id).emit('messaged',data)
+        	var queryString = "update chat set delivered = 1 where friend1 = \""+username+"\" and friend2 = \""+sendto+"\"";
+			connection.query( queryString, function(err, rows,fields){
+				if(err){console.log("**Y");}
+				else{}
+		});
+		console.log("recieved");
+        }
         console.log('taken '+data);
         //socket.emit('message', 'Recieved '+data);
     });
@@ -153,23 +191,32 @@ io.sockets.on('connection', function (socket)
 
 	socket.on('displayfriends', function(username)
     {
-    	var queryString = "select friend2 from friends where friend1 = \""+username+"\"";
-		 console.log("You have friends "+username);
-		connection.query( queryString, function(err, rows,fields){
+    	var arr=[];var dat=[];
+    	var queryString = "select username,profilethumb from user where username in(select friend2 from friends where friend1=\""+username+"\");";
+		console.log("You have friends "+username);
+		connection.query( queryString, function(err, rows,fields)
+		{
 		  	if(err)	
-		  	{console.log("You have no friends");}
+		  	{
+		  		console.log("You have no friends");
+		  	}
 		  	else
 		  	{
-		  		console.log(rows);
+		  		//console.log(rows);
 				for(var i in rows)
-					socket.emit('addfriend',rows[i].friend2)
+				{
+					var data=fs.readFileSync(rows[i].profilethumb);
+					socket.emit('addfriend',rows[i].username,data.toString('base64'));
+				}
+				
 		  	}
-		  });
+		});
     });
+
     socket.on('refresh', function(username,sendto)
     {
-    	var queryString = "select message from chat where friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 0";
-		 console.log("unrecieved messages ");
+    	var queryString = "select serial,message from chat where friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 0";
+		console.log("unrecieved messages ");
 		connection.query( queryString, function(err, rows,fields){
 		  	if(err)	
 		  	{console.log("You have no friends");}
@@ -178,24 +225,24 @@ io.sockets.on('connection', function (socket)
 		  		console.log(rows);
 				for(var i in rows)
 					socket.emit('messaged',rows[i].message)
-				var queryString = "update chat set delivered = 1 where friend1 = \""+sendto+"\" and friend2 = \""+username+"\"";
-				console.log("recieved");
-				connection.query( queryString, function(err, rows,fields){
-				  	if(err)	
-				  	{
-				  		console.log("You have no friends");
-				  	}
-				  	else
-				  	{
-				  	}
-				  });
 				socket.emit('done','');
 			}
 		  });
+		var queryString = "update chat set delivered = 1 where friend1 = \""+sendto+"\" and friend2 = \""+username+"\"";
+		connection.query( queryString, function(err, rows,fields){
+			if(err){console.log("**Y");}
+			else{}
+		});
+    });
+
+    socket.on('recievedmessage',function(username,sendto,serial)
+    {
+		
+				
     });
 	socket.on('restorehistory', function(username,sendto)
     {
-    	var queryString = "select friend1,friend2,message from chat where (friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 1 ) or (friend1 = \""+username+"\" and friend2 = \""+sendto+"\")";
+    	var queryString = "select serial,friend1,friend2,message from chat where (friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 1 ) or (friend1 = \""+username+"\" and friend2 = \""+sendto+"\")";
 		 console.log("recieved messages ");
 		connection.query( queryString, function(err, rows,fields){
 		  	if(err)	
