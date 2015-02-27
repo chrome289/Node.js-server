@@ -57,7 +57,7 @@ io.sockets.on('connection', function (socket)
 		  });
 		};
 
-	socket.on('storeinfo', function (username,password,image,thumb) 
+	socket.on('storeinfo', function (username,password,image,thumb,alias,email) 
 	{
 
 		console.log("User "+socket.id+' Connected')
@@ -97,7 +97,7 @@ io.sockets.on('connection', function (socket)
   						download(thumb, 'd:/nodejs/profilethumb/'+username+'.png', function(){
     					console.log('Done downloading..');
   						});
-			  			var queryString2 = "insert into user values(null, \""+username+"\" , \"google+\" , \"d:/nodejs/profilepic/"+username+".png\", \"d:/nodejs/profilethumb/"+username+".png\")";
+			  			var queryString2 = "insert into user values(null, \""+username+"\" , \"google+\" , \"d:/nodejs/profilepic/"+username+".png\", \"d:/nodejs/profilethumb/"+username+".png\" , \""+alias+"\" , \""+email+"\")";
 						connection.query( queryString2, function(err, rows,fields){
 					  	if(err)	
 					  	{console.log("User doesn't exist");}
@@ -156,7 +156,8 @@ io.sockets.on('connection', function (socket)
         }
         if(isonline==1)
         {
-        	io.to(id).emit('messaged',data)
+        	console.log("sending");
+        	io.to(id).emit('messaged',data,username)
         	var queryString = "update chat set delivered = 1 where friend1 = \""+username+"\" and friend2 = \""+sendto+"\"";
 			connection.query( queryString, function(err, rows,fields){
 				if(err){console.log("**Y");}
@@ -192,7 +193,7 @@ io.sockets.on('connection', function (socket)
 	socket.on('displayfriends', function(username)
     {
     	var arr=[];var dat=[];
-    	var queryString = "select username,profilethumb from user where username in(select friend2 from friends where friend1=\""+username+"\");";
+    	var queryString = "select username,profilethumb,alias from user where username in(select friend2 from friends where friend1=\""+username+"\");";
 		console.log("You have friends "+username);
 		connection.query( queryString, function(err, rows,fields)
 		{
@@ -206,7 +207,7 @@ io.sockets.on('connection', function (socket)
 				for(var i in rows)
 				{
 					var data=fs.readFileSync(rows[i].profilethumb);
-					socket.emit('addfriend',rows[i].username,data.toString('base64'));
+					socket.emit('addfriend',rows[i].username,data.toString('base64'),rows[i].alias);
 				}
 				
 		  	}
@@ -261,6 +262,71 @@ io.sockets.on('connection', function (socket)
 			}
 		  });
     });
+	socket.on('addid', function(username,fri)
+	    {
+			var arr = fri.toString().split("+");
+	    	var lv1=0,lv2=0,lv3=0;
+	    	var y=0,x=0;
+	    	console.log("length "+arr.length+" "+arr[0]);
+	    	for(x=0;x<arr.length;x++)
+	    	{
+	    		console.log("iter " +arr[x]);
+	    		var queryString1 = "select username from user where username=\""+arr[x]+"\"";
+					connection.query( queryString1, function(err, rows1,fields)
+					{
+					  	if(err)	
+					  	{
+					  		console.log("You have no friends1");
+						}
+					  	else
+					  	{
+					  		lv1=0;lv2=0;lv3=0;
+					  		console.log("You have no friends "+y);y++;
+					  		for(var r in rows1)
+					  		{
+					  			lv1=1;
+					  			console.log("User +" + arr[x]);
+					  		}
+					  			if(lv1==1)
+			    				{
+									var queryString2 = "select friend2 from friends where friend1=\""+arr[x]+"\" and friend2 = \""+username+"\"";
+									connection.query( queryString2, function(err, rows2,fields)
+									{
+										if(err)	
+										{
+											console.log("You have no friends2");
+										}
+										else
+										{
+											console.log("--- " +x);
+								  	
+											for(var i2 in rows2)
+												lv2=1;
+											if(lv2==0)
+									    	{
+									    		var queryString3 = "insert into friends values (null,\""+username+"\",\""+arr[x]+"\",\"0\")";
+												console.log("adding friend " +username+" "+arr[x]);
+												connection.query( queryString3, function(err, rows3,fields)
+												{
+													if(err)	
+													{console.log("You have no friends3");}
+													else
+													{
+														console.log(rows3);
+													}
+												});
+											}
+							  			}
+							  		});
+							  	}//WTF is this shit
+					  		x++;
+						}
+					});
+				}	
+			console.log("bs");
+			x=0;
+    	});
+
     socket.on('checkuserexists', function(username)
     {
     	var queryString = "select * from user where username = \""+username+"\" ";
@@ -275,7 +341,7 @@ io.sockets.on('connection', function (socket)
 					exists=1;
 				if(exists==0)
 				{
-					var queryString = "insert into user values (null,\""+username+"\",\""+password+"\")";
+					var queryString = "insert into user values (null,\""+username+"\",\""+password+"\",null,null,null)";
 					console.log("adding user "+username);
 					connection.query( queryString, function(err, rows,fields){
 					  	if(err)	
