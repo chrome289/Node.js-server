@@ -262,98 +262,37 @@ io.sockets.on('connection', function (socket)
 			}
 		  });
     });
-	socket.on('addid', function(username,fri)
-	    {
-			var arr = fri.toString().split("+");
-	    	var lv1=0,lv2=0,lv3=0;
-	    	var y=0,x=0;
-	    	console.log("length "+arr.length+" "+arr[0]);
-	    	for(x=0;x<arr.length;x++)
-	    	{
-	    		console.log("iter " +arr[x]);
-	    		var queryString1 = "select username from user where username=\""+arr[x]+"\"";
-					connection.query( queryString1, function(err, rows1,fields)
-					{
-					  	if(err)	
-					  	{
-					  		console.log("You have no friends1");
-						}
-					  	else
-					  	{
-					  		lv1=0;lv2=0;lv3=0;
-					  		console.log("You have no friends "+y);y++;
-					  		for(var r in rows1)
-					  		{
-					  			lv1=1;
-					  			console.log("User +" + arr[x]);
-					  		}
-					  			if(lv1==1)
-			    				{
-									var queryString2 = "select friend2 from friends where friend1=\""+arr[x]+"\" and friend2 = \""+username+"\"";
-									connection.query( queryString2, function(err, rows2,fields)
-									{
-										if(err)	
-										{
-											console.log("You have no friends2");
-										}
-										else
-										{
-											console.log("--- " +x);
-								  	
-											for(var i2 in rows2)
-												lv2=1;
-											if(lv2==0)
-									    	{
-									    		var queryString3 = "insert into friends values (null,\""+username+"\",\""+arr[x]+"\",\"0\")";
-												console.log("adding friend " +username+" "+arr[x]);
-												connection.query( queryString3, function(err, rows3,fields)
-												{
-													if(err)	
-													{console.log("You have no friends3");}
-													else
-													{
-														console.log(rows3);
-													}
-												});
-											}
-							  			}
-							  		});
-							  	}//WTF is this shit
-					  		x++;
-						}
-					});
-				}	
-			console.log("bs");
-			x=0;
-    	});
-
-    socket.on('checkuserexists', function(username)
-    {
-    	var queryString = "select * from user where username = \""+username+"\" ";
-		console.log("checking if user "+username+" exists");
-		connection.query( queryString, function(err, rows,fields){
-		  	if(err)	
-		  	{console.log("Error");}
-		  	else
-		  	{
-		  		var exists=0
-		  		for(var i in rows)
-					exists=1;
-				if(exists==0)
-				{
-					var queryString = "insert into user values (null,\""+username+"\",\""+password+"\",null,null,null)";
-					console.log("adding user "+username);
-					connection.query( queryString, function(err, rows,fields){
-					  	if(err)	
-					  	{console.log("Error2");}
-					  	else
-					  	{socket.emit('signup','You have been registered',1);}
-					});
-				}
-				else
-				{socket.emit('signup','User already exists',0);}
-				socket.emit('done','');
-			}
-		  });
+    socket.on('checkuserexist', function(username,fri)
+	{
+		var arr=fri.split(",");
+		for(x=0;x<arr.length;x++)
+        {
+        	var queryString = "select * from user where username = \""+arr[x]+"\"";
+            connection.query( queryString, function(err, rows,fields)
+            {
+                if(err) 
+                {console.log("no shit 1");}
+                else
+                {
+                    if(rows.length!=0)
+                    {
+                        var str="insert into friends values (null,\""+username+"\",\""+rows[0].username+"\",\"0\"),(null,\""+rows[0].username+"\",\""+username+"\",\"0\")";
+                        console.log(str);
+                        connection.query(str, function(err, rows2,fields)
+                        {
+                            if(err) 
+                            {console.log("no shit 2");}
+                            else
+                            {
+                            	if(rows2.length!=0)
+                                	console.log("ttt "+rows2);
+                            }
+                        });
+                    }
+                    socket.emit('listupdated','');
+                }
+            });
+		}
+		console.log("done");
     });
 });
