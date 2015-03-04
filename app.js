@@ -5,7 +5,11 @@ var mysql = require('mysql');
 var fs = require('fs');
 var request = require('request');
 var async =require('async');
-
+var connect = require('connect');
+var bodyParser = require('body-parser'); //connects bodyParsing middleware
+var formidable = require('formidable');
+var path = require('path');
+var easyimg = require('easyimage');
 var connection = mysql.createConnection(
     {
       host     : 'localhost',
@@ -15,15 +19,47 @@ var connection = mysql.createConnection(
     }
 );
 connection.connect();
+
 // respond with "Hello World!" on the homepage
 app.get('/', function (req, res) {
   res.send('Hello World!');
   console.log("-------\nRequest for " + url.parse(req.url).pathname + " received from ip"+req.connection.remoteAddress);
 })
+app.use(bodyParser({defer: true}));
+app.post('/', function(req, res) 
+{
+    //console.log(req);
+    var form = new formidable.IncomingForm();
+    //Formidable uploads to operating systems tmp dir by default
+    form.uploadDir = "./profilepic";       //set upload directory
+    form.keepExtensions = true;     //keep file extension
 
-// accept POST request on the homepage
-app.post('/', function (req, res) {
-  res.send('Got a POST request');
+    form.parse(req, function(err, fields, files) 
+    {
+        res.writeHead(200, {'content-type': 'text/plain'});
+        res.write('received upload:\n\n');
+        //console.log(files);
+        //Rename the file to its original name
+        fs.rename(files.uploaded_file.path, './profilepic/'+files.uploaded_file.name+'.jpg', function(err) 
+        {
+	        if (err)
+	            throw err;
+	          console.log('file saved '+'./profilepic/'+files.uploaded_file.name+'.jpg');  
+	          easyimg.rescrop({
+			     src:'./profilepic/'+files.uploaded_file.name+'.jpg', dst:'./profilethumb/'+files.uploaded_file.name+'.jpg',
+			     width:80, height:90,
+			     x:0, y:0
+			  }).then(
+			  function(image) {
+			     console.log('Resized');
+			  },
+			  function (err) {
+			    console.log(err);
+			  }
+			);
+		});
+        res.end();
+    });
 })
 
 // accept PUT request at /user
@@ -48,20 +84,21 @@ var io = require('socket.io').listen(server);
 var clients =[];      
 io.sockets.on('connection', function (socket) 
 {
-	var download = function(uri, filename, callback){
-		  request.head(uri, function(err, res, body){
+	var download = function(uri, filename, callback)
+	{
+		request.head(uri, function(err, res, body)
+	    {
 		    console.log('content-type:', res.headers['content-type']);
 		    console.log('content-length:', res.headers['content-length']);
-
 		    request(uri).pipe(fs.createWriteStream(filename)).on('close', callback);
-		  });
-		};
+		});
+	};
 
-	socket.on('storeinfo', function (username,password,image,thumb,alias,email) 
+	socket.on('storeinfo', function (username,password,alias,email) 
 	{
-
+		console.log(username+" "+password);
 		console.log("User "+socket.id+' Connected')
-		var already_exists=0
+		var already_exists=0;
 		for( var i=0, len=clients.length; i<len; ++i )
 		{
             var c = clients[i];
@@ -80,7 +117,7 @@ io.sockets.on('connection', function (socket)
 	        console.log("User "+username+' Connected')
 	        io.sockets.emit('message', 'User '+username+' Connected');
     	
-	    	var queryString = "select username from user where username = \""+username+"\"";
+	    	/*var queryString = "select username from user where username = \""+username+"\"";
 			 
 			connection.query( queryString, function(err, rows,fields){
 			  	if(err)	
@@ -91,7 +128,7 @@ io.sockets.on('connection', function (socket)
 			  			i=1;
 			  		if(i!=1)
 			  		{
-			  			download(image, 'd:/nodejs/profilepic/'+username+'.png', function(){
+			  			/*download(image, 'd:/nodejs/profilepic/'+username+'.png', function(){
     					console.log('Done downloading..');
   						});
   						download(thumb, 'd:/nodejs/profilethumb/'+username+'.png', function(){
@@ -106,8 +143,8 @@ io.sockets.on('connection', function (socket)
 					  	});
 					}
 			  	}
-			});
-			socket.emit('login','User '+username+' is logged in');
+			});*/
+			socket.emit('ready','User '+username+' is logged in');
 		}
 		else
 		{
@@ -126,7 +163,7 @@ io.sockets.on('connection', function (socket)
             if(c.clientId == socket.id)
             {
                 console.log('User '+c.customId+' Disonnected');
-        		//sockets.emit('messaged', 'User '+c.customId+' Disonnected');
+        		//sockets.emit('messaged2', 'User '+c.customId+' Disonnected');
         		clients.splice(i,1);
                 break;
             }
@@ -135,38 +172,52 @@ io.sockets.on('connection', function (socket)
 
     socket.on('takethis', function(data,username,sendto)
     {
-    	var isonline=0,on_id;
-    	console.log(username);
-    	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",0)";
-		 
-		connection.query( queryString, function(err, rows,fields){
-		  	if(err)	
-		  	{socket.emit('notsent','')}
-		    else
-		  	{socket.emit('sent',data)}
-		  });
-		for( var i=0, len=clients.length; i<len; ++i )
-		{
-            var c = clients[i];
-            if(c.customId == sendto)
-            {
-                isonline=1;id=c.clientId;
-                break;
-            }
-        }
-        if(isonline==1)
-        {
-        	console.log("sending");
-        	io.to(id).emit('messaged',data,username)
-        	var queryString = "update chat set delivered = 1 where friend1 = \""+username+"\" and friend2 = \""+sendto+"\"";
-			connection.query( queryString, function(err, rows,fields){
-				if(err){console.log("**Y");}
-				else{}
-		});
-		console.log("recieved");
-        }
-        console.log('taken '+data);
-        //socket.emit('message', 'Recieved '+data);
+    	var queryString = "select * from friends where friend1 = \""+sendto+"\" and friend2 = \""+username+"\"";
+		connection.query( queryString, function(err, row,fields){
+			if(err)	
+			{socket.emit('notsent','')}
+			else
+			{
+				if(row.length!=0)
+				{
+			    	var isonline=0,on_id;
+			    	console.log(username);
+					for( var i=0, len=clients.length; i<len; ++i )
+					{
+			            var c = clients[i];
+			            if(c.customId == sendto)
+			            {
+			                isonline=1;id=c.clientId;
+			                break;
+			            }
+			        }
+			        if(isonline==1)
+			        {
+			        	console.log("sending");
+			        	io.to(id).emit('messaged2',data,username)
+			        	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",1)";
+						connection.query( queryString, function(err, rows,fields){
+						  	if(err)	
+						  	{socket.emit('notsent','')}
+						    else
+						  	{socket.emit('sent',data)}
+						  });
+						console.log("recieved");
+			        }
+			        else
+			        {
+			        	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",0)";
+						connection.query( queryString, function(err, rows,fields){
+						  	if(err)	
+						  	{socket.emit('notsent','')}
+						    else
+						  	{socket.emit('sent',data)}
+						  });
+		   				 console.log('taken '+data);
+			        }
+			    }
+			}
+    	});
     });
 
     socket.on('login', function(username,password)
@@ -177,15 +228,20 @@ io.sockets.on('connection', function (socket)
 		 
 		connection.query( queryString, function(err, rows,fields){
 		  	if(err)	
-		  	{console.log("User doesn't exist");}
+		  	{console.log("");}
 		    else
 		  	{
-				var obj = rows[0].password;
-				console.log(password);
-				if(obj==password)
-					socket.emit('login', 'User '+username+' is logged in');
+		  		if(rows.length!=0)
+		  		{
+					var obj = rows[0].password;
+					console.log(password);
+					if(obj==password)
+						socket.emit('login', 'User '+username+' is logged in');
+					else
+						socket.emit('wlogin', 'Wrong credentials');
+				}
 				else
-					socket.emit('wlogin', 'Wrong Password');
+					socket.emit('wlogin', 'User doesn\'t exist');
 		  	}
 		  });
     });
@@ -225,7 +281,7 @@ io.sockets.on('connection', function (socket)
 		  	{
 		  		console.log(rows);
 				for(var i in rows)
-					socket.emit('messaged',rows[i].message)
+					socket.emit('messaged2',rows[i].message)
 				socket.emit('done','');
 			}
 		  });
@@ -236,15 +292,30 @@ io.sockets.on('connection', function (socket)
 		});
     });
 
-    socket.on('recievedmessage',function(username,sendto,serial)
+    socket.on('signup',function(username,alias,email,password)
     {
-		
-				
+    	var pic="d:/nodejs/profilepic/"+username+'.jpg',thumb="d:/nodejs/profilethumb/"+username+'.jpg';
+		var queryString = "insert into user values (null,\""+username+"\",\""+password+"\",\""+pic+"\",\""+thumb+"\",\""+alias+"\",\""+email+"\")";
+		console.log("adding user");
+		connection.query( queryString, function(err, rows,fields)
+		{
+		  	if(err)	
+		  	{
+		  		console.log("Already registered");
+		  		socket.emit('wsign','');
+			}
+		  	else
+		  	{
+		  		console.log("Signed up");
+				socket.emit('sign','');
+			}
+		  });
     });
+    
 	socket.on('restorehistory', function(username,sendto)
     {
     	var queryString = "select serial,friend1,friend2,message from chat where (friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 1 ) or (friend1 = \""+username+"\" and friend2 = \""+sendto+"\")";
-		 console.log("recieved messages ");
+		console.log("recieved messages ");
 		connection.query( queryString, function(err, rows,fields){
 		  	if(err)	
 		  	{console.log("You have no friends");}
@@ -254,7 +325,7 @@ io.sockets.on('connection', function (socket)
 				for(var i in rows)
 				{
 					if(rows[i].friend1==sendto)
-						socket.emit('messaged',rows[i].message)
+						socket.emit('messaged2',rows[i].message)
 					if(rows[i].friend1==username)
 						socket.emit('sent',rows[i].message)
 				}
@@ -276,7 +347,7 @@ io.sockets.on('connection', function (socket)
                 {
                     if(rows.length!=0)
                     {
-                        var str="insert into friends values (null,\""+username+"\",\""+rows[0].username+"\",\"0\"),(null,\""+rows[0].username+"\",\""+username+"\",\"0\")";
+                        var str="insert into friends values (null,\""+username+"\",\""+rows[0].username+"\",\"0\")";
                         console.log(str);
                         connection.query(str, function(err, rows2,fields)
                         {
@@ -289,10 +360,12 @@ io.sockets.on('connection', function (socket)
                             }
                         });
                     }
-                    socket.emit('listupdated','');
                 }
             });
 		}
 		console.log("done");
+        socket.emit('listupdated',' ');
+        console.log("done");
     });
+	
 });
