@@ -10,6 +10,8 @@ var bodyParser = require('body-parser'); //connects bodyParsing middleware
 var formidable = require('formidable');
 var path = require('path');
 var easyimg = require('easyimage');
+var randomstring = require("randomstring");
+
 var connection = mysql.createConnection(
     {
       host     : 'localhost',
@@ -57,6 +59,36 @@ app.post('/', function(req, res)
 			    console.log(err);
 			  }
 			);
+		});
+        res.end();
+    });
+})
+
+//attachments
+app.post('/attachments', function(req, res) 
+{
+    //console.log(req);
+    var form = new formidable.IncomingForm();
+    //Formidable uploads to operating systems tmp dir by default
+    form.uploadDir = "./attachments";       //set upload directory
+    form.keepExtensions = true;     //keep file extension
+
+    form.parse(req, function(err, fields, files) 
+    {
+        res.writeHead(200, {'content-type': 'text/plain'});
+        res.write('received upload:\n\n');
+ 		//generate unique filename
+ 		var finalp="";
+		//var tmpname = randomstring.generate(30);
+		var arr=(files.uploaded_file.name).split(".");
+		finalp='d:/nodejs/attachments/'+arr[0]+'.'+arr[arr.length-1];
+        //console.log(files);
+        //Rename the file to its original name
+        fs.rename(files.uploaded_file.path, finalp, function(err) 
+        {
+	        if (err)
+	            throw err;
+	          console.log('file saved '+finalp);  
 		});
         res.end();
     });
@@ -116,34 +148,6 @@ io.sockets.on('connection', function (socket)
 	        clients.push(clientInfo);
 	        console.log("User "+username+' Connected')
 	        io.sockets.emit('message', 'User '+username+' Connected');
-    	
-	    	/*var queryString = "select username from user where username = \""+username+"\"";
-			 
-			connection.query( queryString, function(err, rows,fields){
-			  	if(err)	
-			  	{console.log("User doesn't exist");}
-			  	else
-			  	{
-			  		for(var i in rows)
-			  			i=1;
-			  		if(i!=1)
-			  		{
-			  			/*download(image, 'd:/nodejs/profilepic/'+username+'.png', function(){
-    					console.log('Done downloading..');
-  						});
-  						download(thumb, 'd:/nodejs/profilethumb/'+username+'.png', function(){
-    					console.log('Done downloading..');
-  						});
-			  			var queryString2 = "insert into user values(null, \""+username+"\" , \"google+\" , \"d:/nodejs/profilepic/"+username+".png\", \"d:/nodejs/profilethumb/"+username+".png\" , \""+alias+"\" , \""+email+"\")";
-						connection.query( queryString2, function(err, rows,fields){
-					  	if(err)	
-					  	{console.log("User doesn't exist");}
-					  	else
-					  	{}
-					  	});
-					}
-			  	}
-			});*/
 			socket.emit('ready','User '+username+' is logged in');
 		}
 		else
@@ -170,7 +174,7 @@ io.sockets.on('connection', function (socket)
         }
     });
 
-    socket.on('takethis', function(data,username,sendto)
+    socket.on('takethis', function(data,username,sendto,isattach)
     {
     	var queryString = "select * from friends where friend1 = \""+sendto+"\" and friend2 = \""+username+"\"";
 		connection.query( queryString, function(err, row,fields){
@@ -195,7 +199,7 @@ io.sockets.on('connection', function (socket)
 			        {
 			        	console.log("sending");
 			        	io.to(id).emit('messaged2',data,username)
-			        	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",1)";
+			        	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",1,"+isattach+")";
 						connection.query( queryString, function(err, rows,fields){
 						  	if(err)	
 						  	{socket.emit('notsent','')}
@@ -206,16 +210,18 @@ io.sockets.on('connection', function (socket)
 			        }
 			        else
 			        {
-			        	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",0)";
+			        	var queryString = "insert into chat values(null,\""+username+"\",\""+sendto+"\",\""+data+"\",0,"+isattach+")";
 						connection.query( queryString, function(err, rows,fields){
 						  	if(err)	
-						  	{socket.emit('notsent','')}
+						  	{console.log(err);socket.emit('notsent','')}
 						    else
 						  	{socket.emit('sent',data)}
 						  });
 		   				 console.log('taken '+data);
 			        }
 			    }
+			    else
+			    	socket.emit('notsent','User has not added you as a contact')
 			}
     	});
     });
@@ -272,7 +278,7 @@ io.sockets.on('connection', function (socket)
 
     socket.on('refresh', function(username,sendto)
     {
-    	var queryString = "select serial,message from chat where friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 0";
+    	var queryString = "select serial,message,attachment from chat where friend1 = \""+sendto+"\" and friend2 = \""+username+"\" and delivered = 0";
 		console.log("unrecieved messages ");
 		connection.query( queryString, function(err, rows,fields){
 		  	if(err)	
@@ -281,7 +287,15 @@ io.sockets.on('connection', function (socket)
 		  	{
 		  		console.log(rows);
 				for(var i in rows)
-					socket.emit('messaged2',rows[i].message)
+				{
+					if(rows[i].attachment==0)
+						socket.emit('messaged2',rows[i].message)
+					else
+					{
+						var data=fs.readFileSync('d:/nodejs/attachments/'+rows[i].message);
+						socket.emit('messaged3',rows[i].message,data.toString('base64'));
+					}//deal with attachments
+				}
 				socket.emit('done','');
 			}
 		  });
