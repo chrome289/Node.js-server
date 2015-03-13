@@ -103,7 +103,8 @@ app.put('/user', function (req, res) {
 app.delete('/user', function (req, res) {
   res.send('Got a DELETE request at /user');
 })
-var server = app.listen(80, function () {
+var port1 = process.env.PORT || 5000;
+var server = app.listen(port1,function () {
 
   var host = server.address().address
   var port = server.address().port
@@ -204,7 +205,7 @@ io.sockets.on('connection', function (socket)
 						  	if(err)	
 						  	{socket.emit('notsent','')}
 						    else
-						  	{socket.emit('sent',data)}
+						  	{socket.emit('sent',data,isattach)}
 						  });
 						console.log("recieved");
 			        }
@@ -215,7 +216,7 @@ io.sockets.on('connection', function (socket)
 						  	if(err)	
 						  	{console.log(err);socket.emit('notsent','')}
 						    else
-						  	{socket.emit('sent',data)}
+						  	{socket.emit('sent',data,isattach)}
 						  });
 		   				 console.log('taken '+data);
 			        }
@@ -289,11 +290,11 @@ io.sockets.on('connection', function (socket)
 				for(var i in rows)
 				{
 					if(rows[i].attachment==0)
-						socket.emit('messaged2',rows[i].message)
+						socket.emit('messaged2',rows[i].message,sendto)
 					else
 					{
 						var data=fs.readFileSync('d:/nodejs/attachments/'+rows[i].message);
-						socket.emit('messaged3',rows[i].message,data.toString('base64'));
+						socket.emit('messaged3',rows[i].message,data.toString('base64'),sendto);
 					}//deal with attachments
 				}
 				socket.emit('done','');
